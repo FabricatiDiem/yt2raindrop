@@ -1,11 +1,13 @@
 import json
 import os
+from itertools import chain
 from time import sleep
 from typing import Any, Iterable, Mapping, Optional
 
+import click
 import requests
 from cytoolz.curried import filter, get
-from cytoolz.functoolz import compose, excepts, pipe
+from cytoolz.functoolz import compose, do, excepts, pipe
 from cytoolz.itertoolz import first
 from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
@@ -135,36 +137,75 @@ def add_videos_to_raindrop(
     consume(map(process_video, videos))
 
 
-def main():
+def save_video_info_to_file(
+    video_list: Iterable[Mapping[str, Any]], outfile_name: str
+) -> None:
+    with open(outfile_name, "w") as outfile:
+        outfile.write(json.dumps(video_list, indent=2))
+        outfile.write("\n")
+
+
+@click.command()
+@click.option("--playlist-name", help="The name of the playlist to transfer.")
+@click.option(
+    "--liked", help="Whether to include liked videos.", is_flag=True, default=False
+)
+@click.option(
+    "--save-to-file", help="Whether to save videos to file.", is_flag=True, default=True
+)
+@click.option(
+    "--dry-run",
+    help="Fetch info from Youtube but do not upload to Raindrop.io.",
+    is_flag=True,
+    default=False,
+)
+def main(
+    playlist_name: Optional[str], liked: bool, save_to_file: bool, dry_run: bool
+) -> None:
     youtube = get_youtube_service()
 
-    # liked_videos = get_liked_videos(youtube)
-    playlist_name = "Interesting Videos"
+    if liked:
+        liked_videos = list(get_liked_videos(youtube))
+        print(f"Found {len(liked_videos)} liked videos.")
+    else:
+        liked_videos = []
 
-    videos = list(get_playlist_videos(youtube, playlist_name))
-    if videos is None:
-        print("Playlist not found.")
-        exit(0)
-    elif not videos:
-        print("Empty playlist.")
-        exit(0)
+    if playlist_name:
+        _playlist_videos = get_playlist_videos(youtube, playlist_name)
+        if _playlist_videos is None:
+            print("Playlist not found.")
+            playlist_videos = []
+        else:
+            playlist_videos = list(_playlist_videos)
+            if not playlist_videos:
+                print("Empty playlist.")
+            else:
+                print(
+                    f"Found {len(playlist_videos)} videos in playlist `{playlist_name}`."
+                )
+    else:
+        playlist_videos = []
 
-    # print(f"Found {len(liked_videos)} liked videos. Saving to file...")
+    videos = list(chain(liked_videos, playlist_videos))
 
-    # with open("youtube_liked_videos.jsonl", "w") as outfile:
-    #     outfile.write(json.dumps(liked_videos, indent=2))
-    #     outfile.write("\n")
+    if save_to_file:
+        if liked:
+            print("Saving liked videos to file.")
+            save_video_info_to_file(liked_videos, "youtube_liked_videos.jsonl")
+            print("Done saving liked videos to file.")
 
-    # print("Saved to file.")
+        if playlist_name:
+            print(f"Saving playlist videos to file.")
+            save_video_info_to_file(
+                playlist_videos, f"youtube_playlist_{playlist_name}_videos.jsonl"
+            )
+            print("Done saving playlist videos to file.")
 
-    print(f"Found {len(videos)} playlist videos. Saving to file...")
-    with open(f"youtube_playlist_{playlist_name}_videos.jsonl", "w") as outfile:
-        outfile.write(json.dumps(videos, indent=2))
-        outfile.write("\n")
-    print("Saved to file.")
-
-    # print("Exporting playlist videos to Raindrop.io bookmarks...")
-    # add_videos_to_raindrop(videos)
+    if videos and not dry_run:
+        print("Exporting videos to Raindrop.io bookmarks...")
+        add_videos_to_raindrop(videos)
+    else:
+        print("No videos to export.")
 
 
 if __name__ == "__main__":
