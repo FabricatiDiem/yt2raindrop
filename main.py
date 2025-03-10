@@ -1,3 +1,5 @@
+"""YT2Raindrop main script."""
+
 import json
 import os
 from itertools import chain
@@ -7,7 +9,7 @@ from typing import Any, Iterable, Mapping, Optional
 import click
 import requests
 from cytoolz.curried import filter, get
-from cytoolz.functoolz import compose, do, excepts, pipe
+from cytoolz.functoolz import compose, excepts, pipe
 from cytoolz.itertoolz import first
 from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
@@ -30,7 +32,7 @@ RAINDROP_API_TOKEN = os.environ["RAINDROP_API_TOKEN"]
 
 
 def get_youtube_service() -> YoutubeService:
-    """Authenticates and returns a YouTube API service instance."""
+    """Authenticate and returns a YouTube API service instance."""
     creds = None
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
@@ -48,6 +50,7 @@ def get_youtube_service() -> YoutubeService:
 def list_key_items_from_pages(
     yt_obj: HasListPaging, key: str = "items", **kwargs
 ) -> Iterable[Mapping[str, Any]]:
+    """Wrap a Youtube sub-service paging list."""
     request = yt_obj.list(**kwargs)
     while request:
         response = request.execute()
@@ -57,7 +60,7 @@ def list_key_items_from_pages(
 
 
 def get_liked_videos(youtube: YoutubeService) -> Iterable[Mapping[str, str]]:
-    """Fetches liked videos from YouTube."""
+    """Fetch liked videos from YouTube."""
     yield from (
         {
             "title": item["snippet"]["title"],
@@ -70,6 +73,7 @@ def get_liked_videos(youtube: YoutubeService) -> Iterable[Mapping[str, str]]:
 
 
 def get_playlist_id(youtube: YoutubeService, playlist_name: str) -> Optional[str]:
+    """Get id for playlist by searching for name."""
     filter_playlist_matches = filter(
         lambda item: playlist_name == item["snippet"]["title"]
     )
@@ -90,7 +94,7 @@ def get_playlist_id(youtube: YoutubeService, playlist_name: str) -> Optional[str
 def get_playlist_videos(
     youtube: YoutubeService, playlist_name: str
 ) -> Optional[Iterable[Mapping[str, Any]]]:
-    """Fetches videos from the Watch Later playlist."""
+    """Fetch videos from the specified playlist."""
 
     playlist_id = get_playlist_id(youtube, playlist_name)
     if not playlist_id:
@@ -111,7 +115,7 @@ def get_playlist_videos(
 
 
 def add_to_raindrop(title: str, url: str) -> bool:
-    """Adds a video to Raindrop.io bookmarks."""
+    """Add a video to Raindrop.io bookmarks."""
     headers = {
         "Authorization": f"Bearer {RAINDROP_API_TOKEN}",
         "Content-Type": "application/json",
@@ -129,6 +133,7 @@ def add_to_raindrop(title: str, url: str) -> bool:
 def add_videos_to_raindrop(
     videos: Iterable[Mapping[str, str]], sleep_duration: float = 0.25
 ) -> None:
+    """Process each video in the provided list by adding to Raindrop.io."""
     def process_video(video: Mapping[str, str]) -> None:
         success = add_to_raindrop(video["title"], video["url"])
         print(f'{"✔" if success else "❌"} {video["title"]}')
@@ -140,6 +145,7 @@ def add_videos_to_raindrop(
 def save_video_info_to_file(
     video_list: Iterable[Mapping[str, Any]], outfile_name: str
 ) -> None:
+    """Output the video list to a JSONL file."""
     with open(outfile_name, "w") as outfile:
         outfile.write(json.dumps(video_list, indent=2))
         outfile.write("\n")
@@ -195,7 +201,7 @@ def main(
             print("Done saving liked videos to file.")
 
         if playlist_name:
-            print(f"Saving playlist videos to file.")
+            print("Saving playlist videos to file.")
             save_video_info_to_file(
                 playlist_videos, f"youtube_playlist_{playlist_name}_videos.jsonl"
             )
